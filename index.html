@@ -27,15 +27,18 @@
       background: radial-gradient(circle at top, #1e293b, var(--bg));
       font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
       color: var(--text);
+      padding: 16px;
     }
 
     .app {
-      width: min(92vw, 560px);
+      width: min(96vw, 760px);
       background: color-mix(in srgb, var(--panel), transparent 10%);
       border: 1px solid #334155;
       border-radius: 14px;
       padding: 16px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      display: grid;
+      gap: 14px;
     }
 
     .header {
@@ -43,7 +46,6 @@
       justify-content: space-between;
       align-items: center;
       gap: 10px;
-      margin-bottom: 12px;
       flex-wrap: wrap;
     }
 
@@ -51,22 +53,36 @@
       display: flex;
       gap: 14px;
       font-weight: 600;
+      flex-wrap: wrap;
     }
 
     .actions {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
     }
 
+    select,
     button {
       border: 0;
       border-radius: 8px;
       padding: 8px 12px;
       font-size: 14px;
+      font-weight: 700;
+    }
+
+    select {
+      color: #e2e8f0;
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding-right: 28px;
+    }
+
+    button {
       color: #0b1020;
       background: var(--primary);
       cursor: pointer;
-      font-weight: 700;
     }
 
     button.secondary {
@@ -78,8 +94,16 @@
       cursor: not-allowed;
     }
 
+    .board-wrap {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
     canvas {
       width: 100%;
+      max-width: 500px;
+      justify-self: center;
       aspect-ratio: 1/1;
       background: #020617;
       border: 1px solid #334155;
@@ -87,23 +111,57 @@
       display: block;
     }
 
-    .tips {
-      margin-top: 10px;
-      color: #cbd5e1;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-
     .status {
-      margin-top: 8px;
       min-height: 1.4em;
       font-size: 14px;
       color: #facc15;
       font-weight: 600;
     }
 
+    .tips {
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.5;
+      margin: 0;
+    }
+
     .game-over {
       color: var(--danger);
+    }
+
+    .ranking {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .ranking-card {
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px;
+      background: #0b1220;
+    }
+
+    .ranking-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      color: #c4e4ff;
+    }
+
+    .ranking-card ol {
+      margin: 0;
+      padding-left: 20px;
+      min-height: 90px;
+    }
+
+    .ranking-card li {
+      line-height: 1.6;
+      color: #d1d5db;
+    }
+
+    .empty {
+      color: #64748b;
+      font-style: italic;
     }
   </style>
 </head>
@@ -111,20 +169,42 @@
   <main class="app">
     <div class="header">
       <div class="stats">
+        <span>当前难度：<strong id="currentDifficulty">低级</strong></span>
         <span>得分：<strong id="score">0</strong></span>
-        <span>最高分：<strong id="bestScore">0</strong></span>
+        <span>本难度最高分：<strong id="bestScore">0</strong></span>
       </div>
       <div class="actions">
+        <label for="difficultySelect">难度</label>
+        <select id="difficultySelect" aria-label="选择难度">
+          <option value="easy">低级（慢）</option>
+          <option value="medium">中等（中）</option>
+          <option value="hard">高级（快）</option>
+        </select>
         <button id="startBtn">开始 / 重新开始</button>
         <button id="pauseBtn" class="secondary" disabled>暂停</button>
       </div>
     </div>
 
-    <canvas id="board" width="500" height="500" aria-label="贪吃蛇棋盘"></canvas>
-    <p id="status" class="status">点击“开始”后使用方向键或 WASD 控制。</p>
-    <p class="tips">
-      规则：吃到红色食物会增长并加分；撞墙或撞到自己则游戏结束。
-    </p>
+    <div class="board-wrap">
+      <canvas id="board" width="500" height="500" aria-label="贪吃蛇棋盘"></canvas>
+      <p id="status" class="status">选择难度后，点击“开始”并用方向键或 WASD 控制。</p>
+      <p class="tips">规则：吃到红色食物会增长并加分；撞墙或撞到自己则游戏结束。每个难度有独立排行榜。</p>
+    </div>
+
+    <section class="ranking" aria-label="排行榜">
+      <article class="ranking-card">
+        <h3>低级排行榜</h3>
+        <ol id="easyRanking"></ol>
+      </article>
+      <article class="ranking-card">
+        <h3>中等排行榜</h3>
+        <ol id="mediumRanking"></ol>
+      </article>
+      <article class="ranking-card">
+        <h3>高级排行榜</h3>
+        <ol id="hardRanking"></ol>
+      </article>
+    </section>
   </main>
 
   <script>
@@ -133,18 +213,39 @@
     const ctx = board.getContext("2d");
     const scoreEl = document.getElementById("score");
     const bestScoreEl = document.getElementById("bestScore");
+    const currentDifficultyEl = document.getElementById("currentDifficulty");
     const statusEl = document.getElementById("status");
     const startBtn = document.getElementById("startBtn");
     const pauseBtn = document.getElementById("pauseBtn");
+    const difficultySelect = document.getElementById("difficultySelect");
+
+    const rankingEls = {
+      easy: document.getElementById("easyRanking"),
+      medium: document.getElementById("mediumRanking"),
+      hard: document.getElementById("hardRanking"),
+    };
+
+    const DIFFICULTIES = {
+      easy: { label: "低级", speed: 180 },
+      medium: { label: "中等", speed: 130 },
+      hard: { label: "高级", speed: 90 },
+    };
+
+    const leaderboardKey = "snakeLeaderboardByDifficulty_v1";
+    const maxRanks = 5;
 
     const cellSize = board.width / boardSize;
-    const initialSpeed = 130;
     let loopId = null;
     let isPaused = false;
+    let currentDifficulty = "easy";
 
-    const bestKey = "snakeBestScore";
-    let bestScore = Number(localStorage.getItem(bestKey) || 0);
-    bestScoreEl.textContent = bestScore;
+    const defaultBoard = { easy: [], medium: [], hard: [] };
+    const storedData = JSON.parse(localStorage.getItem(leaderboardKey) || "null");
+    const leaderboard = {
+      easy: Array.isArray(storedData?.easy) ? storedData.easy : [],
+      medium: Array.isArray(storedData?.medium) ? storedData.medium : [],
+      hard: Array.isArray(storedData?.hard) ? storedData.hard : [],
+    };
 
     let snake;
     let direction;
@@ -168,6 +269,48 @@
       D: { x: 1, y: 0 },
     };
 
+    function persistLeaderboard() {
+      localStorage.setItem(leaderboardKey, JSON.stringify(leaderboard));
+    }
+
+    function updateBestScoreUI() {
+      const best = leaderboard[currentDifficulty][0] || 0;
+      bestScoreEl.textContent = String(best);
+      currentDifficultyEl.textContent = DIFFICULTIES[currentDifficulty].label;
+    }
+
+    function renderRankings() {
+      Object.keys(defaultBoard).forEach((level) => {
+        const list = rankingEls[level];
+        list.innerHTML = "";
+
+        if (!leaderboard[level].length) {
+          const emptyItem = document.createElement("li");
+          emptyItem.textContent = "暂无记录";
+          emptyItem.className = "empty";
+          list.appendChild(emptyItem);
+          return;
+        }
+
+        leaderboard[level].forEach((value) => {
+          const item = document.createElement("li");
+          item.textContent = `${value} 分`;
+          list.appendChild(item);
+        });
+      });
+    }
+
+    function addScoreToLeaderboard(level, value) {
+      leaderboard[level].push(value);
+      leaderboard[level] = leaderboard[level]
+        .filter((n) => Number.isFinite(n) && n >= 0)
+        .sort((a, b) => b - a)
+        .slice(0, maxRanks);
+      persistLeaderboard();
+      renderRankings();
+      updateBestScoreUI();
+    }
+
     function initGame() {
       snake = [
         { x: 10, y: 10 },
@@ -178,13 +321,14 @@
       pendingDirection = { ...direction };
       food = randomFood();
       score = 0;
-      speed = initialSpeed;
+      speed = DIFFICULTIES[currentDifficulty].speed;
       isPaused = false;
-      scoreEl.textContent = score;
+      scoreEl.textContent = "0";
       statusEl.classList.remove("game-over");
-      statusEl.textContent = "游戏进行中...";
+      statusEl.textContent = `游戏进行中（${DIFFICULTIES[currentDifficulty].label}）...`;
       pauseBtn.disabled = false;
       pauseBtn.textContent = "暂停";
+      difficultySelect.disabled = true;
       draw();
     }
 
@@ -236,7 +380,6 @@
       ctx.fillStyle = "#020617";
       ctx.fillRect(0, 0, board.width, board.height);
       drawGrid();
-
       snake.forEach((part, idx) => {
         drawCell(part, idx === 0 ? "#4ade80" : "#16a34a", idx === 0 ? 7 : 5);
       });
@@ -245,6 +388,14 @@
 
     function isOpposite(a, b) {
       return a.x + b.x === 0 && a.y + b.y === 0;
+    }
+
+    function onGameOver() {
+      stopLoop();
+      pauseBtn.disabled = true;
+      difficultySelect.disabled = false;
+      addScoreToLeaderboard(currentDifficulty, score);
+      setStatus(`游戏结束！本局 ${score} 分，已记录到${DIFFICULTIES[currentDifficulty].label}排行榜。`, true);
     }
 
     function tick() {
@@ -262,27 +413,15 @@
       const hitSelf = snake.some((part) => part.x === nextHead.x && part.y === nextHead.y);
 
       if (hitWall || hitSelf) {
-        stopLoop();
-        setStatus("游戏结束！点击“开始 / 重新开始”再来一局。", true);
-        pauseBtn.disabled = true;
+        onGameOver();
         return;
       }
 
       snake.unshift(nextHead);
-
       if (nextHead.x === food.x && nextHead.y === food.y) {
         score += 10;
-        speed = Math.max(70, speed - 2);
         food = randomFood();
-        scoreEl.textContent = score;
-
-        if (score > bestScore) {
-          bestScore = score;
-          localStorage.setItem(bestKey, String(bestScore));
-          bestScoreEl.textContent = bestScore;
-        }
-
-        restartLoopWithSpeed();
+        scoreEl.textContent = String(score);
       } else {
         snake.pop();
       }
@@ -303,6 +442,8 @@
     }
 
     function startGame() {
+      currentDifficulty = difficultySelect.value;
+      updateBestScoreUI();
       initGame();
       restartLoopWithSpeed();
     }
@@ -314,7 +455,7 @@
 
       if (isPaused) {
         isPaused = false;
-        setStatus("继续游戏中...");
+        setStatus(`继续游戏中（${DIFFICULTIES[currentDifficulty].label}）...`);
         pauseBtn.textContent = "暂停";
         restartLoopWithSpeed();
       } else {
@@ -325,12 +466,21 @@
       }
     }
 
+    difficultySelect.addEventListener("change", (event) => {
+      currentDifficulty = event.target.value;
+      updateBestScoreUI();
+      setStatus(`已切换为${DIFFICULTIES[currentDifficulty].label}，点击“开始”开始游戏。`);
+    });
+
     document.addEventListener("keydown", (event) => {
       const next = directionMap[event.key];
       if (!next) {
         return;
       }
       event.preventDefault();
+      if (!direction || !pendingDirection) {
+        return;
+      }
       if (isOpposite(next, direction) || isOpposite(next, pendingDirection)) {
         return;
       }
@@ -340,7 +490,9 @@
     startBtn.addEventListener("click", startGame);
     pauseBtn.addEventListener("click", togglePause);
 
-    draw();
+    renderRankings();
+    updateBestScoreUI();
+    drawGrid();
   </script>
 </body>
 </html>
